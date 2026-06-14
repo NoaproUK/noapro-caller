@@ -4,6 +4,7 @@
 // + Realtime + Storage). No backend server required.
 // ============================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, DAILY_CALL_TARGET, DAILY_SIGNUP_TARGET,
          WORKING_DAYS_PER_WEEK, WORKING_DAYS_PER_MONTH } from "./config.js";
 
@@ -432,34 +433,70 @@ $("#fileInput").addEventListener("change", async (e) => {
   toast("Uploaded " + file.name); loadFiles();
 });
 
-// ---------------- CSV IMPORT ----------------
+// ---------------- LEAD IMPORT (Excel .xlsx/.xls or CSV) ----------------
+// Turns a table (array-of-rows) into lead objects. Finds the header row
+// even if it's not first, and maps columns flexibly across naming styles.
+function leadsFromTable(aoa, sourceFile) {
+  const BSET = ["business","name","company","business name","trade name","company name"];
+  let hi = -1, head = null;
+  for (let i = 0; i < Math.min(aoa.length, 15); i++) {
+    const r = (aoa[i] || []).map(c => String(c == null ? "" : c).trim().toLowerCase());
+    if (r.some(h => BSET.includes(h))) { hi = i; head = r; break; }
+  }
+  if (hi < 0) return [];                       // not a lead sheet (e.g. a dashboard)
+  const colsFor = names => head.map((h, idx) => names.includes(h) ? idx : -1).filter(i => i >= 0);
+  const bCols = colsFor(BSET);
+  const pCols = colsFor(["phone","telephone","tel","number","phone number","mobile","contact number","tel no","phone no"]);
+  const cCols = colsFor(["category","trade","type","trade category","sector","industry"]);
+  const aCols = colsFor(["area","town","location","city","region","postcode","post code","county"]);
+  const pick = (r, cols) => { for (const c of cols) { const v = String(r[c] == null ? "" : r[c]).trim(); if (v) return v; } return null; };
+  const out = [];
+  for (let i = hi + 1; i < aoa.length; i++) {
+    const r = aoa[i] || [];
+    const business = pick(r, bCols);
+    if (!business) continue;
+    out.push({ business, phone: pick(r, pCols), category: pick(r, cCols), area: pick(r, aCols), status: "New", source_file: sourceFile });
+  }
+  return out;
+}
+
+async function importLeadFile(file) {
+  let leads = [];
+  const lname = file.name.toLowerCase();
+  try {
+    if (lname.endsWith(".csv")) {
+      leads = leadsFromTable(parseCSV(await file.text()), file.name);
+    } else {
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      for (const sn of wb.SheetNames) {
+        const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, blankrows: false, defval: "" });
+        leads = leads.concat(leadsFromTable(aoa, `${file.name} — ${sn}`));
+      }
+    }
+  } catch (err) { toast("Couldn't read file: " + err.message); return; }
+
+  // de-duplicate within this file (business + phone)
+  const seen = new Set();
+  leads = leads.filter(l => { const k = (l.business + "|" + (l.phone || "")).toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  if (!leads.length) { toast('No leads found — the file needs a "business" column.'); return; }
+
+  // insert in chunks so large lists don't time out
+  let n = 0;
+  for (let i = 0; i < leads.length; i += 500) {
+    const { error } = await sb.from("leads").insert(leads.slice(i, i + 500));
+    if (error) { toast(`Imported ${n}; then stopped: ${error.message}`); loadQueue(); return; }
+    n += Math.min(500, leads.length - i);
+    toast(`Importing… ${n}/${leads.length}`);
+  }
+  toast(`Imported ${n} leads.`);
+  try { await sb.storage.from("files").upload(file.name, file, { upsert: true }); } catch (_) {}
+  loadQueue(); loadFiles();
+}
+
 $("#csvInput").addEventListener("change", async (e) => {
   const file = e.target.files[0]; if (!file) return;
-  const text = await file.text();
-  const rows = parseCSV(text);
-  if (!rows.length) { toast("No rows found in CSV."); return; }
-  const head = rows[0].map(h => h.trim().toLowerCase());
-  const col = (names) => head.findIndex(h => names.includes(h));
-  const iB = col(["business","name","company","business name"]);
-  const iP = col(["phone","telephone","tel","number","phone number"]);
-  const iC = col(["category","trade","type"]);
-  const iA = col(["area","town","location","city"]);
-  if (iB < 0) { toast('CSV needs a "business" column.'); return; }
-
-  const leads = rows.slice(1).filter(r => r[iB]?.trim()).map(r => ({
-    business: r[iB].trim(),
-    phone:    iP>=0 ? (r[iP]||"").trim() : null,
-    category: iC>=0 ? (r[iC]||"").trim() : null,
-    area:     iA>=0 ? (r[iA]||"").trim() : null,
-    status: "New",
-    source_file: file.name,
-  }));
-  const { error } = await sb.from("leads").insert(leads);
-  if (error) { toast(error.message); return; }
-  toast(`Imported ${leads.length} leads.`);
-  // keep a copy of the file too
-  await sb.storage.from("files").upload(file.name, file, { upsert: true });
-  loadQueue(); loadFiles();
+  toast("Reading " + file.name + "…");
+  await importLeadFile(file);
   e.target.value = "";
 });
 
