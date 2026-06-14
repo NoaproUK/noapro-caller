@@ -514,5 +514,5 @@ function subscribePresence(uid) {
 }
 
 // ---------------- START ----------------
-sb.auth.onAuthStateChange((_e, session) => { if (!session) location.reload(); });
+sb.auth.onAuthStateChange((event) => { if (event === "SIGNED_OUT") location.reload(); });
 boot();
