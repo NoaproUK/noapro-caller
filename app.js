@@ -442,6 +442,122 @@ async function deleteFile(name) {
   loadFiles();
 }
 
+// ---------------- ALL LEADS (full traceability) ----------------
+let allSort = { col: "created_at", dir: "desc" };
+
+function allFilter(q) {
+  const term = (($("#aSearch") || {}).value || "").trim().replace(/[,()%*]/g, " ").trim();
+  const st   = (($("#aStatus") || {}).value || "");
+  const area = (($("#aArea")   || {}).value || "").trim();
+  const cat  = (($("#aCat")    || {}).value || "").trim();
+  if (st)   q = q.eq("status", st);
+  if (area) q = q.ilike("area", `%${area}%`);
+  if (cat)  q = q.ilike("category", `%${cat}%`);
+  if (term) q = q.or(`business.ilike.%${term}%,phone.ilike.%${term}%`);
+  return q;
+}
+
+async function loadAllLeads() {
+  const { count } = await allFilter(sb.from("leads").select("*", { count: "exact", head: true }));
+  const { data, error } = await allFilter(sb.from("leads").select("*"))
+    .order(allSort.col, { ascending: allSort.dir === "asc", nullsFirst: false })
+    .limit(200);
+  if (error) { toast(error.message); return; }
+  const rows = data || [], total = count || 0;
+  $("#allCount").textContent = total > rows.length ? `${rows.length} of ${total}` : `${total} leads`;
+  $("#allBody").innerHTML = rows.length ? rows.map(l => `
+    <tr data-id="${l.id}">
+      <td title="${esc(l.business)}">${esc(l.business)}</td>
+      <td>${esc(l.category || "")}</td>
+      <td>${esc(l.area || "")}</td>
+      <td>${esc(l.phone || "")}</td>
+      <td><span class="${stClass(l.status)}">${esc(l.status)}</span></td>
+      <td>${l.last_called_at ? new Date(l.last_called_at).toLocaleDateString() : "—"}</td>
+      <td>${l.callback_at ? new Date(l.callback_at).toLocaleString() : "—"}</td>
+    </tr>`).join("") : `<tr><td colspan="7" class="empty">No leads match these filters.</td></tr>`;
+  $$("#all .ltable th").forEach(th => {
+    th.classList.toggle("sorted", th.dataset.sort === allSort.col);
+    th.classList.toggle("asc", th.dataset.sort === allSort.col && allSort.dir === "asc");
+  });
+  $$("#allBody tr[data-id]").forEach(tr => tr.addEventListener("click", () => openLeadDetail(tr.dataset.id)));
+}
+
+async function openLeadDetail(id) {
+  const { data: la } = await sb.from("leads").select("*").eq("id", id).limit(1);
+  const l = la && la[0]; if (!l) { toast("Lead not found."); return; }
+  const { data: log } = await sb.from("call_log").select("*").eq("lead_id", id).order("created_at", { ascending: false });
+  $("#lmTitle").textContent = l.business;
+  $("#lmBody").innerHTML = `
+    <div class="kv">
+      <span class="k">Status</span><span><span class="${stClass(l.status)}">${esc(l.status)}</span></span>
+      <span class="k">Phone</span><span>${esc(l.phone || "—")}</span>
+      <span class="k">Category</span><span>${esc(l.category || "—")}</span>
+      <span class="k">Area</span><span>${esc(l.area || "—")}</span>
+      <span class="k">Claimed by</span><span>${esc(l.claimed_by ? (profiles[l.claimed_by]?.full_name || "—") : "—")}</span>
+      <span class="k">Last called</span><span>${l.last_called_at ? new Date(l.last_called_at).toLocaleString() : "—"}</span>
+      <span class="k">Callback</span><span>${l.callback_at ? new Date(l.callback_at).toLocaleString() : "—"}</span>
+      <span class="k">Source</span><span>${esc(l.source_file || "—")}</span>
+    </div>
+    <label class="fl">Notes</label>
+    <textarea id="lmNotes">${esc(l.notes || "")}</textarea>
+    <div class="modal-actions">
+      <button class="btn pri" id="lmSave">Save notes</button>
+      <button class="btn ghost" id="lmRequeue">↩ Return to queue</button>
+      <button class="btn ghost" id="lmDelete" style="color:var(--red);border-color:var(--red)">Delete</button>
+    </div>
+    <div class="hist">
+      <h4>Call history (${(log || []).length})</h4>
+      ${(log && log.length) ? log.map(h => `<div class="hevent"><div><div class="ho">${esc(h.outcome)}</div>${h.note ? `<div>${esc(h.note)}</div>` : ""}</div><div class="ht" style="margin-left:auto">${esc(profiles[h.caller_id]?.full_name || "")} · ${new Date(h.created_at).toLocaleString()}</div></div>`).join("") : `<div class="empty">No calls logged yet.</div>`}
+    </div>`;
+  $("#leadModal").classList.remove("hidden");
+  $("#lmSave").addEventListener("click", async () => {
+    const { error } = await sb.from("leads").update({ notes: $("#lmNotes").value }).eq("id", id);
+    if (error) { toast(error.message); return; } toast("Notes saved.");
+  });
+  $("#lmRequeue").addEventListener("click", async () => {
+    const { error } = await sb.from("leads").update({ status: "New", claimed_by: null, claimed_at: null }).eq("id", id);
+    if (error) { toast(error.message); return; } toast("Returned to queue."); closeModal(); loadAllLeads(); loadQueue();
+  });
+  $("#lmDelete").addEventListener("click", async () => {
+    if (!confirm("Delete this lead permanently? This also removes its call history.")) return;
+    const { error } = await sb.from("leads").delete().eq("id", id);
+    if (error) { toast(error.message); return; }
+    if (active && active.id === id) { active = null; stopTimer(); }
+    toast("Lead deleted."); closeModal(); loadAllLeads(); loadQueue();
+  });
+}
+function closeModal() { $("#leadModal").classList.add("hidden"); $("#lmBody").innerHTML = ""; }
+
+// ---------------- TEAM CHAT ----------------
+async function loadMessages() {
+  const { data, error } = await sb.from("messages").select("*").order("created_at", { ascending: true }).limit(300);
+  if (error) {
+    $("#chatLog").innerHTML = `<div class="empty">Chat isn't set up yet — run <b>messages-table.sql</b> in Supabase, then reload this page.</div>`;
+    return;
+  }
+  $("#chatLog").innerHTML = (data && data.length) ? "" : `<div class="empty">No messages yet — say hello 👋</div>`;
+  (data || []).forEach(appendMessage);
+  scrollChat();
+}
+function appendMessage(m) {
+  const log = $("#chatLog"); if (!log) return;
+  const ph = log.querySelector(".empty"); if (ph) ph.remove();
+  if (log.querySelector(`[data-mid="${m.id}"]`)) return;
+  const div = document.createElement("div");
+  div.className = "msg" + (m.author_id === me.id ? " mine" : "");
+  div.dataset.mid = m.id;
+  div.innerHTML = `<div class="who">${esc(profiles[m.author_id]?.full_name || "Someone")}</div><div class="bub">${esc(m.body)}</div><div class="ht">${new Date(m.created_at).toLocaleString()}</div>`;
+  log.appendChild(div);
+  scrollChat();
+}
+function scrollChat() { const l = $("#chatLog"); if (l) l.scrollTop = l.scrollHeight; }
+async function sendMessage() {
+  const inp = $("#chatInput"); const body = inp.value.trim(); if (!body) return;
+  inp.value = "";
+  const { error } = await sb.from("messages").insert({ author_id: me.id, body });
+  if (error) { toast(error.message); inp.value = body; }
+}
+
 async function downloadFile(name) {
   const { data, error } = await sb.storage.from("files").createSignedUrl(name, 60);
   if (error) { toast(error.message); return; }
@@ -565,6 +681,30 @@ $("#fClear") && $("#fClear").addEventListener("click", () => {
   loadQueue();
 });
 
+// All Leads: sortable headers + filters
+$$("#all .ltable th").forEach(th => th.addEventListener("click", () => {
+  const c = th.dataset.sort;
+  if (allSort.col === c) allSort.dir = allSort.dir === "asc" ? "desc" : "asc";
+  else allSort = { col: c, dir: "asc" };
+  loadAllLeads();
+}));
+const reloadAll = debounce(loadAllLeads, 300);
+["#aSearch", "#aArea", "#aCat"].forEach(s => { const e = $(s); if (e) e.addEventListener("input", reloadAll); });
+$("#aStatus") && $("#aStatus").addEventListener("change", loadAllLeads);
+$("#aClear") && $("#aClear").addEventListener("click", () => {
+  ["#aSearch", "#aArea", "#aCat"].forEach(s => { if ($(s)) $(s).value = ""; });
+  if ($("#aStatus")) $("#aStatus").value = "";
+  loadAllLeads();
+});
+
+// Lead detail modal close
+$("#lmClose") && $("#lmClose").addEventListener("click", closeModal);
+$("#leadModal") && $("#leadModal").addEventListener("click", (e) => { if (e.target.id === "leadModal") closeModal(); });
+
+// Team chat send
+$("#chatSend") && $("#chatSend").addEventListener("click", sendMessage);
+$("#chatInput") && $("#chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); sendMessage(); } });
+
 // ---------------- NAV ----------------
 $("#nav").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
@@ -574,6 +714,8 @@ $("#nav").addEventListener("click", (e) => {
   $("#" + b.dataset.p).classList.add("show");
   if (b.dataset.p === "dash") loadDashboard();
   if (b.dataset.p === "files") loadFiles();
+  if (b.dataset.p === "all") loadAllLeads();
+  if (b.dataset.p === "chat") loadMessages();
 });
 
 // ---------------- REALTIME ----------------
@@ -582,10 +724,21 @@ function subscribeRealtime() {
   sb.channel("leads-changes")
     .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, () => {
       clearTimeout(reloadTimer);
-      reloadTimer = setTimeout(() => { loadQueue(); if ($("#dash").classList.contains("show")) loadDashboard(); }, 250);
+      reloadTimer = setTimeout(() => {
+        loadQueue();
+        if ($("#dash").classList.contains("show")) loadDashboard();
+        if ($("#all").classList.contains("show")) loadAllLeads();
+      }, 250);
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "call_log" }, () => {
       if ($("#dash").classList.contains("show")) loadDashboard();
+    })
+    .subscribe();
+
+  // live team chat
+  sb.channel("messages-changes")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
+      appendMessage(payload.new);
     })
     .subscribe();
 }

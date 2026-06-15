@@ -85,6 +85,50 @@ h1{font-size:21px;margin:0 0 3px;letter-spacing:-.02em}
 .filters input{flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;outline:none}
 .filters input:focus{border-color:var(--brand)}
 .filters .btn{padding:7px 12px}
+.filters select{border:1px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;background:#fff;outline:none}
+.filters select:focus{border-color:var(--brand)}
+
+/* all-leads table */
+.tablewrap{overflow:auto;max-height:calc(100vh - 230px)}
+.ltable{width:100%;border-collapse:collapse;font-size:13px}
+.ltable th{position:sticky;top:0;background:var(--card);text-align:left;padding:11px 14px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap;user-select:none}
+.ltable th:hover{color:var(--brand-dark)}
+.ltable th.sorted::after{content:" ↓";opacity:.7}
+.ltable th.sorted.asc::after{content:" ↑"}
+.ltable td{padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis}
+.ltable tbody tr{cursor:pointer}
+.ltable tbody tr:hover td{background:#fafdff}
+
+/* modal */
+.modal{position:fixed;inset:0;background:rgba(15,31,35,.45);display:flex;align-items:center;justify-content:center;z-index:60;padding:20px}
+.modal.hidden{display:none}
+.modal-box{background:var(--card);border-radius:16px;width:100%;max-width:560px;max-height:86vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.modal-h{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--line);font-weight:800;font-size:16px}
+.modal-x{margin-left:auto;border:0;background:var(--bg);width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:14px;color:var(--muted)}
+.modal-x:hover{background:var(--line)}
+.modal-body{padding:18px 20px;overflow:auto}
+.kv{display:grid;grid-template-columns:120px 1fr;gap:6px 12px;font-size:13px;margin-bottom:16px}
+.kv .k{color:var(--muted);font-weight:600}
+.hist{border-top:1px solid var(--line);padding-top:14px}
+.hist h4{margin:0 0 10px;font-size:13px}
+.hevent{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
+.hevent:last-child{border-bottom:0}
+.hevent .ho{font-weight:700}
+.hevent .ht{color:var(--muted);font-size:11px}
+.modal-actions{display:flex;gap:10px;margin-top:16px}
+
+/* team chat */
+.chatpanel{display:flex;flex-direction:column;height:calc(100vh - 200px)}
+.chatlog{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.msg{max-width:75%;align-self:flex-start}
+.msg.mine{align-self:flex-end;text-align:right}
+.msg .who{font-size:11px;color:var(--muted);font-weight:700;margin-bottom:3px}
+.msg .bub{display:inline-block;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:9px 13px;font-size:14px;text-align:left;white-space:pre-wrap;word-break:break-word}
+.msg.mine .bub{background:var(--brand-soft);border-color:var(--brand-soft);color:var(--brand-dark)}
+.msg .ht{font-size:10px;color:var(--muted);margin-top:3px}
+.chatbar{display:flex;gap:10px;padding:14px 16px;border-top:1px solid var(--line)}
+.chatbar input{flex:1;border:1px solid var(--line);border-radius:10px;padding:11px 13px;font:inherit;font-size:14px;outline:none}
+.chatbar input:focus{border-color:var(--brand)}
 .lead{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}
 .lead:last-child{border-bottom:0}
 .lead:hover{background:#fafdfc}

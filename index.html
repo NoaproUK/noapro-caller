@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NoaPro Caller</title>
-<link rel="stylesheet" href="styles.css?v=6">
+<link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body>
 
@@ -32,8 +32,10 @@
     <div class="brand"><span class="logo-wrap-sm"><img class="brand-logo-sm" src="https://noapro.co.uk/logo.png" alt="NoaPro"></span> <span style="font-size:12px;color:var(--muted);font-weight:600">Caller</span></div>
     <nav class="nav" id="nav">
       <button class="active" data-p="queue">📞 Call Queue <span class="badge" id="queueCount">0</span></button>
+      <button data-p="all">🗂 All Leads</button>
       <button data-p="dash">▣ Dashboard</button>
       <button data-p="files">▦ Files &amp; Imports</button>
+      <button data-p="chat">💬 Team Chat</button>
     </nav>
     <div class="side-foot">
       <p class="team">Callers</p>
@@ -70,6 +72,41 @@
           <div class="panel">
             <div class="panel-h" id="callHeader">Your active call</div>
             <div id="callCard"><div class="noactive">No lead claimed. Pick one from the queue to start calling.</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ALL LEADS -->
+      <section class="page" id="all">
+        <h1>All Leads</h1>
+        <p class="sub">Every lead and its current status — claimed, called, signed up, or not interested. Click a column heading to sort, or any row to see the business again with its full call history.</p>
+        <div class="panel">
+          <div class="filters">
+            <input id="aSearch" placeholder="Search business / phone">
+            <select id="aStatus">
+              <option value="">All statuses</option>
+              <option>New</option><option>Calling</option><option>No answer</option>
+              <option>Voicemail left</option><option>Callback</option><option>Not interested</option>
+              <option>Wrong number</option><option>Do not call</option><option>Signed up</option>
+            </select>
+            <input id="aArea" placeholder="Area">
+            <input id="aCat" placeholder="Category">
+            <button class="btn ghost" id="aClear">Clear</button>
+            <span class="pill" id="allCount" style="margin-left:auto"></span>
+          </div>
+          <div class="tablewrap">
+            <table class="ltable">
+              <thead><tr>
+                <th data-sort="business">Business</th>
+                <th data-sort="category">Category</th>
+                <th data-sort="area">Area</th>
+                <th data-sort="phone">Phone</th>
+                <th data-sort="status">Status</th>
+                <th data-sort="last_called_at">Last called</th>
+                <th data-sort="callback_at">Callback</th>
+              </tr></thead>
+              <tbody id="allBody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+            </table>
           </div>
         </div>
       </section>
@@ -131,12 +168,33 @@
         </div>
       </section>
 
+      <!-- TEAM CHAT -->
+      <section class="page" id="chat">
+        <h1>Team Chat</h1>
+        <p class="sub">Leave messages for the team — flag a callback, ask a question, share a win. Everyone sees these live.</p>
+        <div class="panel chatpanel">
+          <div class="chatlog" id="chatLog"><div class="empty">Loading…</div></div>
+          <div class="chatbar">
+            <input id="chatInput" placeholder="Write a message…" autocomplete="off">
+            <button class="btn pri" id="chatSend">Send</button>
+          </div>
+        </div>
+      </section>
+
     </div>
+  </div>
+</div>
+
+<!-- lead detail / history modal -->
+<div class="modal hidden" id="leadModal">
+  <div class="modal-box">
+    <div class="modal-h"><span id="lmTitle">Lead</span><button class="modal-x" id="lmClose">✕</button></div>
+    <div class="modal-body" id="lmBody"></div>
   </div>
 </div>
 
 <div class="toast" id="toast"></div>
 
-<script type="module" src="app.js?v=5"></script>
+<script type="module" src="app.js?v=6"></script>
 </body>
 </html>
