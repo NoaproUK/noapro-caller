@@ -89,6 +89,10 @@ async function boot() {
   await loadProfiles();
   me = profiles[session.user.id] || { id: session.user.id, full_name: "You", initials: "ME", color: "#0d7d6b" };
 
+  // record this sign-in / activity, and reveal the Admin tab for admins
+  sb.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", me.id).then(() => {});
+  if (me.is_admin && $("#navAdmin")) $("#navAdmin").style.display = "";
+
   await loadActive();
   await loadQueue();
   await loadDashboard();
@@ -604,9 +608,18 @@ function appendMessage(m) {
   const div = document.createElement("div");
   div.className = "msg" + (m.author_id === me.id ? " mine" : "");
   div.dataset.mid = m.id;
-  div.innerHTML = `<div class="who">${esc(profiles[m.author_id]?.full_name || "Someone")}</div><div class="bub">${esc(m.body)}</div><div class="ht">${new Date(m.created_at).toLocaleString()}</div>`;
+  div.innerHTML = `<div class="who">${esc(profiles[m.author_id]?.full_name || "Someone")}</div><div class="bub">${esc(m.body)}</div><div class="ht">${new Date(m.created_at).toLocaleString()}${me.is_admin ? ' · <a href="#" class="msgdel">delete</a>' : ''}</div>`;
   log.appendChild(div);
+  if (me.is_admin) { const d = div.querySelector(".msgdel"); if (d) d.addEventListener("click", (e) => { e.preventDefault(); deleteMessage(m.id, div); }); }
   scrollChat();
+}
+
+async function deleteMessage(id, el) {
+  if (!confirm("Delete this message for everyone?")) return;
+  const { error } = await sb.from("messages").delete().eq("id", id);
+  if (error) { toast(error.message); return; }
+  if (el) el.remove();
+  toast("Message deleted.");
 }
 function scrollChat() { const l = $("#chatLog"); if (l) l.scrollTop = l.scrollHeight; }
 async function sendMessage() {
@@ -817,7 +830,34 @@ $("#nav").addEventListener("click", (e) => {
   if (b.dataset.p === "imports") loadImports();
   if (b.dataset.p === "all") loadAllLeads();
   if (b.dataset.p === "chat") loadMessages();
+  if (b.dataset.p === "admin") loadAdmin();
 });
+
+// ---------------- ADMIN PANEL (admins only) ----------------
+async function loadAdmin() {
+  const { data: profs } = await sb.from("profiles").select("*");
+  (profs || []).forEach(p => { profiles[p.id] = p; });
+  const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+  const { data: today } = await sb.from("call_log").select("caller_id,outcome").gte("created_at", startOfDay.toISOString());
+  const callsBy = {}, signBy = {};
+  (today || []).forEach(c => { callsBy[c.caller_id] = (callsBy[c.caller_id] || 0) + 1; if (c.outcome === "Signed up") signBy[c.caller_id] = (signBy[c.caller_id] || 0) + 1; });
+  $("#adminTeam").innerHTML = Object.values(profiles).map(p => {
+    const on = online.has(p.id);
+    const seen = p.last_seen ? new Date(p.last_seen).toLocaleString() : "never";
+    return `<div class="lb">
+      <span class="who" style="width:150px"><span class="ava" style="background:${esc(p.color)};width:26px;height:26px;font-size:11px">${esc(initials(p))}</span>${esc(p.full_name)}${p.is_admin ? ' <span class="st New" style="font-size:9px">admin</span>' : ''}</span>
+      <span style="width:90px;font-size:12px;font-weight:700;color:${on ? 'var(--ok)' : 'var(--muted)'}">${on ? '● online' : 'offline'}</span>
+      <span style="flex:1;color:var(--muted);font-size:12px">last active: ${esc(seen)}</span>
+      <span class="num">${callsBy[p.id] || 0} calls</span>
+      <span class="num" style="color:var(--ok)">${signBy[p.id] || 0} signed</span>
+    </div>`;
+  }).join("") || `<div class="empty">No callers.</div>`;
+
+  const { data: log } = await sb.from("call_log").select("created_at,outcome,note,caller_id,leads(business)").order("created_at", { ascending: false }).limit(60);
+  $("#adminActivity").innerHTML = (log && log.length) ? log.map(h =>
+    `<div class="hevent" style="padding:10px 16px"><div><div class="ho">${esc(profiles[h.caller_id]?.full_name || "Someone")} — ${esc(h.outcome)}</div><div>${esc(h.leads?.business || "")}${h.note ? " · " + esc(h.note) : ""}</div></div><div class="ht" style="margin-left:auto">${new Date(h.created_at).toLocaleString()}</div></div>`
+  ).join("") : `<div class="empty">No activity logged yet.</div>`;
+}
 
 // ---------------- REALTIME ----------------
 let reloadTimer = null;
@@ -833,6 +873,7 @@ function subscribeRealtime() {
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "call_log" }, () => {
       if ($("#dash").classList.contains("show")) loadDashboard();
+      if ($("#admin").classList.contains("show")) loadAdmin();
     })
     .subscribe();
 
