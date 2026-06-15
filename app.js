@@ -210,7 +210,8 @@ function renderCall() {
       </div>
       <div class="cb-row" id="cbRow">
         <input type="datetime-local" class="dt" id="cbTime">
-        <span>callback reminder — shows in everyone's queue when due</span>
+        <button class="btn pri" id="cbSave">Save callback</button>
+        <span>shows under Callbacks for the whole team</span>
       </div>
       <div class="savebar">
         <button class="btn ghost" id="releaseBtn">Release lead</button>
@@ -222,8 +223,7 @@ function renderCall() {
     if (b.dataset.o === "Callback") { $("#cbRow").classList.add("show"); $("#cbTime").focus(); }
     else logOutcome(b.dataset.o);
   }));
-  // callback confirm via Enter on datetime
-  $("#cbTime").addEventListener("change", () => logOutcome("Callback"));
+  $("#cbSave").addEventListener("click", () => logOutcome("Callback"));
   $("#releaseBtn").addEventListener("click", releaseLead);
   $("#delLeadBtn").addEventListener("click", () => deleteLead(active && active.id));
   restoreTimerDisplay();
@@ -291,6 +291,8 @@ async function loadDashboard() {
   const calls = todays || [];
   const signups = calls.filter(c => c.outcome === "Signed up").length;
 
+  const { count: callbacksTotal } = await sb.from("leads").select("*", { count: "exact", head: true })
+    .eq("status", "Callback");
   const { count: callbacksDue } = await sb.from("leads").select("*", { count: "exact", head: true })
     .eq("status", "Callback").lte("callback_at", new Date().toISOString());
   const { count: remaining } = await sb.from("leads").select("*", { count: "exact", head: true })
@@ -300,7 +302,7 @@ async function loadDashboard() {
   $("#statCards").innerHTML = `
     ${card("Calls today", calls.length, "", "", "calls-today")}
     ${card("Sign-ups today", signups, conv + "% conversion", "", "signups-today")}
-    ${card("Callbacks due", callbacksDue ?? 0, "", "var(--amber)", "callbacks-due")}
+    ${card("Callbacks", callbacksTotal ?? 0, (callbacksDue ?? 0) > 0 ? `${callbacksDue} due now` : ((callbacksTotal ?? 0) > 0 ? "all upcoming" : ""), "var(--amber)", "callbacks-due")}
     ${card("Leads remaining", remaining ?? 0, "", "var(--muted)", "leads-remaining")}`;
 
   // leaderboard (sign-ups by caller)
