@@ -5,10 +5,14 @@
    ============================================================ */
 :root{
   --brand:#1190ef;--brand-dark:#0a6fc7;--brand-soft:#e7f2fd;
-  --ink:#0f1f23;--muted:#5b7077;--line:#e4ebec;--bg:#f6f9f9;--card:#fff;
-  --ok:#1f9d57;--amber:#9a6500;--amber-bg:#fff4e0;--red:#b3261e;--red-bg:#fde8e8;
-  --blue:#2f6fb0;--blue-bg:#e8f1fb;--grey:#6b7c81;--grey-bg:#eef2f2;
-  --radius:14px;--font:'Inter',system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+  --ink:#10203a;--muted:#64748b;--line:#e7ecf3;--bg:#f4f7fb;--card:#fff;
+  --ok:#15924f;--ok-bg:#e6f6ed;--amber:#9a6500;--amber-bg:#fff4e0;--red:#c0362c;--red-bg:#fdeceb;
+  --blue:#2f6fb0;--blue-bg:#e8f1fb;--grey:#647686;--grey-bg:#eef2f7;
+  --radius:14px;
+  --shadow-sm:0 1px 2px rgba(16,32,58,.06);
+  --shadow:0 1px 3px rgba(16,32,58,.06),0 8px 24px -12px rgba(16,32,58,.12);
+  --shadow-lg:0 24px 60px -20px rgba(16,32,58,.28);
+  --font:'Inter',system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -132,6 +136,90 @@ h1{font-size:21px;margin:0 0 3px;letter-spacing:-.02em}
 .chatbar{display:flex;gap:10px;padding:14px 16px;border-top:1px solid var(--line)}
 .chatbar input{flex:1;border:1px solid var(--line);border-radius:10px;padding:11px 13px;font:inherit;font-size:14px;outline:none}
 .chatbar input:focus{border-color:var(--brand)}
+
+/* ============================================================
+   PROFESSIONAL POLISH LAYER
+   ============================================================ */
+body{letter-spacing:-.006em;color:var(--ink);font-feature-settings:"ss01","cv11"}
+h1{font-weight:800;letter-spacing:-.025em;font-size:21px}
+.sub{font-size:13.5px;line-height:1.5}
+
+/* sidebar */
+.app{grid-template-columns:248px 1fr}
+.side{padding:18px 14px}
+.brand{padding:4px 6px 20px}
+.logo-wrap-sm{box-shadow:var(--shadow-sm)}
+.nav{gap:3px;margin-top:4px}
+.nav button{gap:12px;padding:9px 11px;border-radius:10px;font-size:13.5px;font-weight:600;color:var(--muted)}
+.nav button svg{width:18px;height:18px;flex:0 0 auto;opacity:.85}
+.nav button:hover{background:var(--bg);color:var(--ink)}
+.nav button.active{background:var(--brand);color:#fff;font-weight:700;box-shadow:0 8px 18px -8px rgba(17,144,239,.65)}
+.nav button.active svg{opacity:1}
+.nav button.active .badge{background:rgba(255,255,255,.22);color:#fff}
+.nav button .badge{margin-left:auto}
+.team{margin:2px 6px 10px}
+.signout{border-radius:10px;font-weight:600}
+
+/* top bar */
+.top{padding:13px 26px;gap:12px;background:rgba(255,255,255,.88);backdrop-filter:blur(8px);position:sticky;top:0;z-index:20}
+.search{max-width:340px;gap:8px;border-radius:10px;padding:9px 12px}
+.search svg{width:16px;height:16px;color:var(--muted);flex:0 0 auto}
+.search input{font-size:13.5px}
+
+/* buttons */
+.btn{border-radius:10px;padding:9px 15px;font-weight:600;font-size:13px;transition:background .15s,box-shadow .15s,border-color .15s;letter-spacing:-.006em}
+.btn.pri{background:var(--brand);box-shadow:0 7px 16px -9px rgba(17,144,239,.75)}
+.btn.pri:hover{background:var(--brand-dark);box-shadow:0 9px 20px -9px rgba(17,144,239,.85)}
+.btn.ghost{background:#fff;border:1px solid var(--line);color:var(--ink)}
+.btn.ghost:hover{background:var(--bg);border-color:#d6dee9}
+.btn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+
+/* content + panels */
+.content{padding:24px 26px}
+.panel{border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-sm)}
+.panel-h{padding:14px 18px;font-weight:700;font-size:13.5px;letter-spacing:-.01em}
+
+/* stat cards */
+.cards{gap:16px}
+.stat{border-radius:16px;padding:18px;box-shadow:var(--shadow-sm)}
+.stat .k{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.stat .v{font-size:28px;font-weight:800;letter-spacing:-.03em;margin-top:8px}
+.stat .go{display:inline-flex;align-items:center;margin-left:auto}
+.stat .go svg{width:15px;height:15px}
+.stat.clickable:hover{border-color:#cfe4fb}
+
+/* refined status pills */
+.st{font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;letter-spacing:.01em}
+
+/* queue rows + action buttons */
+.claim{border-radius:9px;font-weight:600;padding:6px 13px}
+.del,.fdel{display:inline-flex;align-items:center;justify-content:center;color:var(--muted);border-color:var(--line)}
+.del svg,.fdel svg{width:15px;height:15px}
+.del:hover,.fdel:hover{color:var(--red);background:var(--red-bg);border-color:var(--red-bg)}
+.lead .nm{font-weight:600}
+.lead:hover{background:#f8fbff}
+.phone{border-radius:13px}
+.phone .phicon{display:inline-flex;color:var(--brand-dark)}
+.phone .phicon svg{width:18px;height:18px}
+.phone .num{letter-spacing:.01em}
+
+/* outcome buttons */
+.oc{border-radius:11px;font-weight:600}
+
+/* login */
+.login{background:radial-gradient(1100px 460px at 50% -8%, #e9f3fe, var(--bg))}
+.login .box{border-radius:20px;box-shadow:var(--shadow-lg);border:1px solid var(--line);padding:36px}
+.login input{border-radius:10px;padding:11px 13px}
+.login input:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(17,144,239,.12)}
+
+/* table */
+.ltable th{font-weight:700;font-size:10.5px}
+.ltable td{font-size:13px}
+
+/* modal + chat */
+.modal-box{border-radius:18px;box-shadow:var(--shadow-lg)}
+.msg .bub{border-radius:14px}
+.member .ava,.stack .ava{box-shadow:var(--shadow-sm)}
 .lead{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}
 .lead:last-child{border-bottom:0}
 .lead:hover{background:#fafdfc}

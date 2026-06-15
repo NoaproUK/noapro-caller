@@ -34,6 +34,8 @@ const $$ = (s) => [...document.querySelectorAll(s)];
 const esc = (t) => String(t ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
 const stClass = (s) => "st " + String(s).replace(/[^a-z]/gi, "");
 const initials = (p) => p?.initials || "??";
+const ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+const ICON_PHONE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
 
 function toast(msg) {
   const t = $("#toast"); t.textContent = msg; t.classList.add("show");
@@ -139,7 +141,7 @@ function leadRow(l) {
   const overdue = l.callback_at && new Date(l.callback_at) <= new Date();
   const right = l.claimed_by
     ? `<span class="locked">🔒 ${esc(initials(profiles[l.claimed_by]))} calling</span>`
-    : `<span class="${stClass(l.status)}">${esc(l.status)}</span><button class="claim" data-id="${l.id}">Claim</button><button class="del" data-del="${l.id}" title="Delete lead">🗑</button>`;
+    : `<span class="${stClass(l.status)}">${esc(l.status)}</span><button class="claim" data-id="${l.id}">Claim</button><button class="del" data-del="${l.id}" title="Delete lead">${ICON_TRASH}</button>`;
   return `<div class="lead">
       <div>
         <div class="nm">${esc(l.business)}</div>
@@ -200,7 +202,7 @@ function renderCall() {
     <div class="call">
       <div class="biz">${esc(active.business)}</div>
       <div class="cat">${esc(active.category || "")}${active.area ? " · " + esc(active.area) : ""}</div>
-      <div class="phone"><span style="font-size:18px">📱</span><span class="num">${esc(active.phone || "—")}</span><span class="timer" id="timer">00:00</span></div>
+      <div class="phone"><span class="phicon">${ICON_PHONE}</span><span class="num">${esc(active.phone || "—")}</span><span class="timer" id="timer">00:00</span></div>
       ${active.notes ? `<div class="scriptbox"><b>Previous notes:</b> ${esc(active.notes)}</div>` : ""}
       <label class="fl">Call notes</label>
       <textarea id="callNote" placeholder="Spoke to owner, interested but wants to think about it…">${esc(active.notes || "")}</textarea>
@@ -420,7 +422,7 @@ $("#tgSeg").addEventListener("click", (e) => {
   renderTargets();
 });
 function card(k, v, d, color, action) {
-  return `<div class="stat${action ? " clickable" : ""}"${action ? ` data-action="${action}"` : ""}><div class="k">${esc(k)}${action ? ' <span class="go">→</span>' : ""}</div><div class="v">${esc(v)}</div>${d?`<div class="d" style="color:${color||"var(--ok)"}">${esc(d)}</div>`:""}</div>`;
+  return `<div class="stat${action ? " clickable" : ""}"${action ? ` data-action="${action}"` : ""}><div class="k">${esc(k)}${action ? ' <span class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>' : ""}</div><div class="v">${esc(v)}</div>${d?`<div class="d" style="color:${color||"var(--ok)"}">${esc(d)}</div>`:""}</div>`;
 }
 
 function goTab(p) { const b = document.querySelector(`#nav button[data-p="${p}"]`); if (b) b.click(); }
@@ -451,7 +453,7 @@ async function loadFiles() {
   const files = (data || []).filter(f => f.id);
   $("#fileList").innerHTML = files.length ? files.map(f => {
     const ext = (f.name.split(".").pop() || "").toUpperCase().slice(0,4);
-    return `<div class="file" data-name="${esc(f.name)}"><span class="fic">${esc(ext)}</span><div><div class="nm">${esc(f.name)}</div><div class="mt">${new Date(f.created_at).toLocaleDateString()}</div></div><button class="fdel" data-fdel="${esc(f.name)}" title="Delete file">🗑</button></div>`;
+    return `<div class="file" data-name="${esc(f.name)}"><span class="fic">${esc(ext)}</span><div><div class="nm">${esc(f.name)}</div><div class="mt">${new Date(f.created_at).toLocaleDateString()}</div></div><button class="fdel" data-fdel="${esc(f.name)}" title="Delete file">${ICON_TRASH}</button></div>`;
   }).join("") : `<div class="empty">No files yet. Upload a script or lead list.</div>`;
   $$("#fileList .file").forEach(el => el.addEventListener("click", () => downloadFile(el.dataset.name)));
   $$("#fileList .fdel").forEach(b => b.addEventListener("click", (e) => { e.stopPropagation(); deleteFile(b.dataset.fdel); }));
