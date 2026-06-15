@@ -5,6 +5,7 @@
 // ============================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
+import * as XLSXStyle from "https://esm.sh/xlsx-js-style@1.2.0";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, DAILY_CALL_TARGET, DAILY_SIGNUP_TARGET,
          WORKING_DAYS_PER_WEEK, WORKING_DAYS_PER_MONTH } from "./config.js";
 
@@ -394,21 +395,63 @@ async function renderTargets() {
   }).join("") : `<div class="empty">No callers yet.</div>`;
 }
 
+// ---------------- BRANDED XLSX EXPORT ----------------
+// Writes a proper Excel file (no "possible data loss" warning) styled in
+// NoaPro branding: blue title banner, blue header row, zebra striping.
+const X_BRAND = "FF1190EF", X_BRANDDK = "FF0B66A8", X_ZEBRA = "FFF1F7FE";
+function xThin() { const s = { style: "thin", color: { rgb: "FFE5E7EB" } }; return { top: s, bottom: s, left: s, right: s }; }
+function exportXlsx({ filename, sheet, subtitle, columns, rows }) {
+  const U = XLSXStyle.utils, ncol = columns.length;
+  const aoa = [];
+  aoa.push(["NoaPro"]);                                                    // r0 banner
+  aoa.push([subtitle]);                                                    // r1 subtitle
+  aoa.push([`Generated ${new Date().toLocaleString("en-GB")}  •  noapro.co.uk`]); // r2
+  aoa.push([]);                                                            // r3 spacer
+  aoa.push(columns.map(c => c.label));                                     // r4 header
+  rows.forEach(r => aoa.push(columns.map(c => (r[c.key] == null ? "" : r[c.key]))));
+  const ws = U.aoa_to_sheet(aoa);
+  ws["!merges"] = [0, 1, 2].map(r => ({ s: { r, c: 0 }, e: { r, c: ncol - 1 } }));
+  ws["!cols"] = columns.map(c => ({ wch: c.width || 16 }));
+  ws["!rows"] = [{ hpt: 34 }, { hpt: 20 }, { hpt: 16 }, { hpt: 6 }, { hpt: 22 }];
+  const cell = (r, c) => { const ref = U.encode_cell({ r, c }); return (ws[ref] = ws[ref] || { t: "s", v: "" }); };
+  cell(0, 0).s = { font: { bold: true, sz: 20, color: { rgb: "FFFFFFFF" } }, fill: { fgColor: { rgb: X_BRAND } }, alignment: { vertical: "center", horizontal: "left", indent: 1 } };
+  cell(1, 0).s = { font: { bold: true, sz: 12, color: { rgb: "FFFFFFFF" } }, fill: { fgColor: { rgb: X_BRANDDK } }, alignment: { vertical: "center", horizontal: "left", indent: 1 } };
+  cell(2, 0).s = { font: { sz: 10, color: { rgb: "FF6B7280" } }, alignment: { horizontal: "left", indent: 1 } };
+  for (let c = 0; c < ncol; c++)
+    cell(4, c).s = { font: { bold: true, sz: 11, color: { rgb: "FFFFFFFF" } }, fill: { fgColor: { rgb: X_BRAND } }, alignment: { horizontal: "left", vertical: "center" }, border: xThin() };
+  for (let r = 5; r < aoa.length; r++)
+    for (let c = 0; c < ncol; c++)
+      cell(r, c).s = { font: { sz: 10, color: { rgb: "FF1F2937" } }, alignment: { horizontal: "left", vertical: "center" }, border: xThin(), ...((r % 2) ? { fill: { fgColor: { rgb: X_ZEBRA } } } : {}) };
+  const wb = U.book_new();
+  U.book_append_sheet(wb, ws, sheet);
+  XLSXStyle.writeFile(wb, filename);
+}
+
 // ---------------- EXPORT RESULTS ----------------
 $("#exportBtn").addEventListener("click", async () => {
   const { data, error } = await sb.from("leads")
     .select("business,phone,email,category,area,status,last_called_at,callback_at,notes")
     .order("status", { ascending: true });
   if (error) { toast(error.message); return; }
-  const cols = ["business","phone","email","category","area","status","last_called_at","callback_at","notes"];
-  const q = (v) => { v = v == null ? "" : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v; };
-  const csv = [cols.join(",")].concat((data||[]).map(r => cols.map(c => q(r[c])).join(","))).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `noapro-results-${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  const fmt = (v) => v ? new Date(v).toLocaleString("en-GB") : "";
+  const rows = (data || []).map(r => ({ ...r, last_called_at: fmt(r.last_called_at), callback_at: fmt(r.callback_at) }));
+  exportXlsx({
+    filename: `noapro-results-${new Date().toISOString().slice(0,10)}.xlsx`,
+    sheet: "Results",
+    subtitle: "Lead Results Export",
+    columns: [
+      { key: "business", label: "Business", width: 32 },
+      { key: "phone", label: "Phone", width: 16 },
+      { key: "email", label: "Email", width: 30 },
+      { key: "category", label: "Category", width: 20 },
+      { key: "area", label: "Area", width: 14 },
+      { key: "status", label: "Status", width: 16 },
+      { key: "last_called_at", label: "Last called", width: 20 },
+      { key: "callback_at", label: "Callback", width: 20 },
+      { key: "notes", label: "Notes", width: 44 },
+    ],
+    rows,
+  });
   toast(`Exported ${(data||[]).length} leads.`);
 });
 
@@ -419,24 +462,30 @@ $("#exportLogBtn").addEventListener("click", async () => {
     .select("created_at,outcome,note,caller_id,leads(business,phone,area)")
     .order("created_at", { ascending: false });
   if (error) { toast(error.message); return; }
-  const q = (v) => { v = v == null ? "" : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v; };
-  const head = ["timestamp","caller","business","phone","area","outcome","note"];
-  const lines = (data || []).map(r => [
-    new Date(r.created_at).toISOString(),
-    profiles[r.caller_id]?.full_name || "",
-    r.leads?.business || "",
-    r.leads?.phone || "",
-    r.leads?.area || "",
-    r.outcome,
-    r.note || "",
-  ].map(q).join(","));
-  const csv = [head.join(",")].concat(lines).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `noapro-call-log-${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  const rows = (data || []).map(r => ({
+    timestamp: new Date(r.created_at).toLocaleString("en-GB"),
+    caller: profiles[r.caller_id]?.full_name || "",
+    business: r.leads?.business || "",
+    phone: r.leads?.phone || "",
+    area: r.leads?.area || "",
+    outcome: r.outcome,
+    note: r.note || "",
+  }));
+  exportXlsx({
+    filename: `noapro-call-log-${new Date().toISOString().slice(0,10)}.xlsx`,
+    sheet: "Call Log",
+    subtitle: "Call Log Export",
+    columns: [
+      { key: "timestamp", label: "Timestamp", width: 22 },
+      { key: "caller", label: "Caller", width: 20 },
+      { key: "business", label: "Business", width: 32 },
+      { key: "phone", label: "Phone", width: 16 },
+      { key: "area", label: "Area", width: 14 },
+      { key: "outcome", label: "Outcome", width: 18 },
+      { key: "note", label: "Note", width: 44 },
+    ],
+    rows,
+  });
   toast(`Exported ${(data||[]).length} call-log rows.`);
 });
 
