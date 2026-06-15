@@ -677,15 +677,36 @@ async function importLeadFile(file) {
   leads = leads.filter(l => { const k = (l.business + "|" + (l.phone || "")).toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
   if (!leads.length) { toast('No leads found — the file needs a "business" column.'); return; }
 
-  // insert in chunks so large lists don't time out
-  let n = 0;
-  for (let i = 0; i < leads.length; i += 500) {
-    const { error } = await sb.from("leads").insert(leads.slice(i, i + 500));
-    if (error) { toast(`Imported ${n}; then stopped: ${error.message}`); loadQueue(); return; }
-    n += Math.min(500, leads.length - i);
-    toast(`Importing… ${n}/${leads.length}`);
+  // Match against existing leads by business name so re-imports UPDATE existing rows
+  // (e.g. fill in emails) instead of creating duplicates.
+  toast("Matching against existing leads…");
+  const existing = {};
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await sb.from("leads").select("id,business").range(from, from + 999);
+    if (error || !data || !data.length) break;
+    data.forEach(l => { const k = (l.business || "").trim().toLowerCase(); (existing[k] = existing[k] || []).push(l.id); });
+    if (data.length < 1000) break;
   }
-  toast(`Imported ${n} leads.`);
+  const updates = [], inserts = [];
+  for (const l of leads) {
+    const ids = existing[l.business.trim().toLowerCase()];
+    if (ids && ids.length) { if (l.email) ids.forEach(id => updates.push({ id, business: l.business, email: l.email })); }
+    else inserts.push(l);
+  }
+  let nUp = 0;
+  for (let i = 0; i < updates.length; i += 300) {
+    const { error } = await sb.from("leads").upsert(updates.slice(i, i + 300), { onConflict: "id" });
+    if (error) { toast("Update error: " + error.message); break; }
+    nUp += Math.min(300, updates.length - i);
+    toast(`Updating emails… ${nUp}/${updates.length}`);
+  }
+  let nIns = 0;
+  for (let i = 0; i < inserts.length; i += 500) {
+    const { error } = await sb.from("leads").insert(inserts.slice(i, i + 500));
+    if (error) { toast("Insert error: " + error.message); break; }
+    nIns += Math.min(500, inserts.length - i);
+  }
+  toast(`Import done — ${nUp} updated, ${nIns} new.`);
   try { await sb.storage.from("files").upload("imports/" + file.name, file, { upsert: true }); } catch (_) {}
   loadQueue(); loadImports();
 }
