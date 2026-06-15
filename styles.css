@@ -115,6 +115,9 @@ h1{font-size:21px;margin:0 0 3px;letter-spacing:-.02em}
 .hevent:last-child{border-bottom:0}
 .hevent .ho{font-weight:700}
 .hevent .ht{color:var(--muted);font-size:11px}
+.status-row{display:flex;gap:10px;align-items:center}
+.status-row select{flex:1;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;background:#fff;outline:none}
+.status-row select:focus{border-color:var(--brand)}
 .modal-actions{display:flex;gap:10px;margin-top:16px}
 
 /* team chat */

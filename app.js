@@ -521,12 +521,16 @@ async function openLeadDetail(id) {
       <span class="k">Callback</span><span>${l.callback_at ? new Date(l.callback_at).toLocaleString() : "—"}</span>
       <span class="k">Source</span><span>${esc(l.source_file || "—")}</span>
     </div>
+    <label class="fl">Change status</label>
+    <div class="status-row">
+      <select id="lmStatus">${["New","No answer","Voicemail left","Callback","Not interested","Wrong number","Do not call","Signed up"].map(s => `<option${s === l.status ? " selected" : ""}>${s}</option>`).join("")}</select>
+      <button class="btn pri" id="lmStatusSave">Update status</button>
+    </div>
     <label class="fl">Notes</label>
     <textarea id="lmNotes">${esc(l.notes || "")}</textarea>
     <div class="modal-actions">
-      <button class="btn pri" id="lmSave">Save notes</button>
-      <button class="btn ghost" id="lmRequeue">↩ Return to queue</button>
-      <button class="btn ghost" id="lmDelete" style="color:var(--red);border-color:var(--red)">Delete</button>
+      <button class="btn ghost" id="lmSave">Save notes</button>
+      <button class="btn ghost" id="lmDelete" style="color:var(--red);border-color:var(--red)">Delete lead</button>
     </div>
     <div class="hist">
       <h4>Call history (${(log || []).length})</h4>
@@ -537,9 +541,16 @@ async function openLeadDetail(id) {
     const { error } = await sb.from("leads").update({ notes: $("#lmNotes").value }).eq("id", id);
     if (error) { toast(error.message); return; } toast("Notes saved.");
   });
-  $("#lmRequeue").addEventListener("click", async () => {
-    const { error } = await sb.from("leads").update({ status: "New", claimed_by: null, claimed_at: null }).eq("id", id);
-    if (error) { toast(error.message); return; } toast("Returned to queue."); closeModal(); loadAllLeads(); loadQueue();
+  $("#lmStatusSave").addEventListener("click", async () => {
+    const ns = $("#lmStatus").value;
+    const upd = { status: ns, claimed_by: null, claimed_at: null };
+    if (ns !== "Callback") upd.callback_at = null;   // clear stale callback time
+    const { error } = await sb.from("leads").update(upd).eq("id", id);
+    if (error) { toast(error.message); return; }
+    if (active && active.id === id) { active = null; stopTimer(); }
+    toast("Status changed to " + ns);
+    closeModal(); loadAllLeads(); loadQueue();
+    if ($("#dash").classList.contains("show")) loadDashboard();
   });
   $("#lmDelete").addEventListener("click", async () => {
     if (!confirm("Delete this lead permanently? This also removes its call history.")) return;
