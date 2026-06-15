@@ -87,6 +87,7 @@ async function boot() {
   await loadProfiles();
   me = profiles[session.user.id] || { id: session.user.id, full_name: "You", initials: "ME", color: "#0d7d6b" };
 
+  await loadActive();
   await loadQueue();
   await loadDashboard();
   await loadFiles();
@@ -113,38 +114,59 @@ function renderTeam() {
 }
 
 // ---------------- QUEUE ----------------
-async function loadQueue() {
-  const { data, error } = await sb.from("leads")
-    .select("*")
-    .in("status", [...CALLABLE, "Calling"])
-    .order("callback_at", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: true });
-  if (error) { toast(error.message); return; }
+const RENDER_CAP = 150;   // max lead rows drawn at once (keeps the page snappy)
 
-  const leads = data || [];
-  // restore my in-progress call if I refreshed mid-call
-  active = leads.find(l => l.status === "Calling" && l.claimed_by === me.id) || active;
+// Apply the active filters (area, category, search) to a Supabase query — runs
+// server-side so filters reach ALL leads, not just the ones currently on screen.
+function queueFilter(q) {
+  q = q.in("status", [...CALLABLE, "Calling"]);
+  const area = (($("#fArea") || {}).value || "").trim();
+  const cat  = (($("#fCat")  || {}).value || "").trim();
+  const term = (($("#search")|| {}).value || "").trim().replace(/[,()%*]/g, " ").trim();
+  if (area) q = q.ilike("area", `%${area}%`);
+  if (cat)  q = q.ilike("category", `%${cat}%`);
+  if (term) q = q.or(`business.ilike.%${term}%,phone.ilike.%${term}%`);
+  return q;
+}
 
-  const term = $("#search").value.trim().toLowerCase();
-  const list = leads.filter(l => l.status !== "Calling" || l.claimed_by !== me.id)
-                    .filter(l => !term || `${l.business} ${l.phone} ${l.area} ${l.category}`.toLowerCase().includes(term));
+// Restore my in-progress call from the DB (e.g. after a refresh mid-call).
+async function loadActive() {
+  const { data } = await sb.from("leads").select("*").eq("claimed_by", me.id).eq("status", "Calling").limit(1);
+  active = (data && data[0]) || null;
+}
 
-  const callable = list.filter(l => !l.claimed_by);
-  $("#queueCount").textContent = callable.length;
-
-  $("#queueList").innerHTML = list.length ? list.map(l => {
-    const overdue = l.callback_at && new Date(l.callback_at) <= new Date();
-    const right = l.claimed_by
-      ? `<span class="locked">🔒 ${esc(initials(profiles[l.claimed_by]) )} calling</span>`
-      : `<span class="${stClass(l.status)}">${esc(l.status)}</span><button class="claim" data-id="${l.id}">Claim</button><button class="del" data-del="${l.id}" title="Delete lead">🗑</button>`;
-    return `<div class="lead">
+function leadRow(l) {
+  const overdue = l.callback_at && new Date(l.callback_at) <= new Date();
+  const right = l.claimed_by
+    ? `<span class="locked">🔒 ${esc(initials(profiles[l.claimed_by]))} calling</span>`
+    : `<span class="${stClass(l.status)}">${esc(l.status)}</span><button class="claim" data-id="${l.id}">Claim</button><button class="del" data-del="${l.id}" title="Delete lead">🗑</button>`;
+  return `<div class="lead">
       <div>
         <div class="nm">${esc(l.business)}</div>
         <div class="meta">${esc(l.category || "")}${l.area ? " · " + esc(l.area) : ""}${overdue ? ' · <b style="color:var(--amber)">callback due</b>' : ""}</div>
       </div>
       <div class="right">${right}</div>
     </div>`;
-  }).join("") : `<div class="empty">No leads to call. Import a CSV or add a lead.</div>`;
+}
+
+async function loadQueue() {
+  const { count } = await queueFilter(sb.from("leads").select("*", { count: "exact", head: true }));
+  const { data, error } = await queueFilter(sb.from("leads").select("*"))
+    .order("callback_at", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true })
+    .limit(RENDER_CAP);
+  if (error) { toast(error.message); return; }
+
+  const list = (data || []).filter(l => !(l.status === "Calling" && l.claimed_by === me.id));
+  const total = count || 0;
+  $("#queueCount").textContent = total;
+
+  let html = list.length
+    ? list.map(leadRow).join("")
+    : `<div class="empty">No leads match these filters. Clear them, or import a list.</div>`;
+  if (total > list.length)
+    html += `<div class="empty">Showing ${list.length} of ${total}. Work through these — or use the Area / Category filters to narrow down.</div>`;
+  $("#queueList").innerHTML = html;
 
   $$("#queueList .claim").forEach(b => b.addEventListener("click", () => claim(b.dataset.id)));
   $$("#queueList .del").forEach(b => b.addEventListener("click", () => deleteLead(b.dataset.del)));
@@ -532,8 +554,16 @@ $("#addLeadBtn").addEventListener("click", async () => {
   toast("Lead added."); loadQueue();
 });
 
-// ---------------- SEARCH ----------------
-$("#search").addEventListener("input", () => loadQueue());
+// ---------------- SEARCH & FILTERS ----------------
+const debounce = (fn, ms = 300) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+const reloadQueue = debounce(loadQueue, 300);
+["#search", "#fArea", "#fCat"].forEach(sel => { const el = $(sel); if (el) el.addEventListener("input", reloadQueue); });
+$("#fClear") && $("#fClear").addEventListener("click", () => {
+  if ($("#fArea")) $("#fArea").value = "";
+  if ($("#fCat")) $("#fCat").value = "";
+  if ($("#search")) $("#search").value = "";
+  loadQueue();
+});
 
 // ---------------- NAV ----------------
 $("#nav").addEventListener("click", (e) => {
