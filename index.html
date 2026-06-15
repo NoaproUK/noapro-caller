@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NoaPro Caller</title>
-<link rel="stylesheet" href="styles.css?v=3">
+<link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
 
 <!-- ============ LOGIN ============ -->
 <div class="login" id="loginView">
   <div class="box">
-    <img class="brand-logo" src="https://noapro.co.uk/logo.png" alt="NoaPro">
+    <div class="logo-wrap"><img class="brand-logo" src="https://noapro.co.uk/logo.png" alt="NoaPro"></div>
     <p class="login-tag">Caller — sign in to the team call list.</p>
     <form id="loginForm">
       <label>Email</label>
@@ -29,7 +29,7 @@
 <!-- ============ APP ============ -->
 <div class="app hidden" id="appView">
   <aside class="side">
-    <div class="brand"><img class="brand-logo-sm" src="https://noapro.co.uk/logo.png" alt="NoaPro"> <span style="font-size:12px;color:var(--muted);font-weight:600">Caller</span></div>
+    <div class="brand"><span class="logo-wrap-sm"><img class="brand-logo-sm" src="https://noapro.co.uk/logo.png" alt="NoaPro"></span> <span style="font-size:12px;color:var(--muted);font-weight:600">Caller</span></div>
     <nav class="nav" id="nav">
       <button class="active" data-p="queue">📞 Call Queue <span class="badge" id="queueCount">0</span></button>
       <button data-p="dash">▣ Dashboard</button>
