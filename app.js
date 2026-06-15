@@ -5,7 +5,7 @@
 // ============================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
-import * as XLSXStyle from "https://esm.sh/xlsx-js-style@1.2.0";
+import XLSXStyle from "https://esm.sh/xlsx-js-style@1.2.0";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, DAILY_CALL_TARGET, DAILY_SIGNUP_TARGET,
          WORKING_DAYS_PER_WEEK, WORKING_DAYS_PER_MONTH } from "./config.js";
 
