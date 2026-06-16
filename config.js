@@ -14,9 +14,11 @@ export const SUPABASE_ANON_KEY = "sb_publishable_6oYl13un1oWXsMhquQIRGw_3MY5Zd0E
 // Callback is considered "overdue" once its time has passed.
 export const OVERDUE_GRACE_MIN = 0;
 
-// ---- Daily targets (per caller, per day) ----
-// Shown as progress bars on the Dashboard. Tune to your team.
-export const DAILY_CALL_TARGET   = 60;  // dials logged per caller per day
+// ---- Daily targets (per caller, per day) — FALLBACK DEFAULTS ----
+// These are only used until the live values are loaded from the database.
+// Admins change the live targets in-app (Dashboard → Targets), which are
+// stored in the app_settings table and shared with the whole team.
+export const DAILY_CALL_TARGET   = 10;  // dials logged per caller per day
 export const DAILY_SIGNUP_TARGET = 5;   // sign-ups per caller per day
 
 // Used to scale the daily target up for the Week / Month views.

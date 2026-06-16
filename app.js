@@ -29,6 +29,7 @@ let active = null;        // lead I've claimed
 let online = new Set();   // user ids currently online
 let timerInt = null, timerSec = 0;
 let targetPeriod = "day"; // day | week | month (targets panel)
+let settings = { daily_call_target: DAILY_CALL_TARGET, daily_signup_target: DAILY_SIGNUP_TARGET }; // live, admin-editable
 
 const $  = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -100,6 +101,14 @@ async function boot() {
   // record this sign-in / activity, and reveal the Admin tab for admins
   sb.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", me.id).then(() => {});
   if (me.is_admin && $("#navAdmin")) $("#navAdmin").style.display = "";
+
+  await loadSettings();
+  // admins get the inline target editor in the Targets panel
+  if (me.is_admin && $("#tgEdit")) {
+    $("#tgEdit").style.display = "flex";
+    $("#tgCall").value = settings.daily_call_target;
+    $("#tgSign").value = settings.daily_signup_target;
+  }
 
   await loadActive();
   await loadQueue();
@@ -355,6 +364,30 @@ async function loadDashboard() {
   await renderTargets();
 }
 
+// ---- live team targets (admin-editable, shared via app_settings) ----
+async function loadSettings() {
+  const { data } = await sb.from("app_settings").select("daily_call_target,daily_signup_target").eq("id", 1).maybeSingle();
+  if (data) settings = {
+    daily_call_target:   data.daily_call_target   ?? settings.daily_call_target,
+    daily_signup_target: data.daily_signup_target ?? settings.daily_signup_target,
+  };
+}
+
+// admin clicks Save on the target editor
+$("#tgSave") && $("#tgSave").addEventListener("click", async () => {
+  const call = Math.max(1, parseInt($("#tgCall").value, 10) || settings.daily_call_target);
+  const sign = Math.max(0, parseInt($("#tgSign").value, 10) || 0);
+  const { error } = await sb.from("app_settings")
+    .update({ daily_call_target: call, daily_signup_target: sign, updated_at: new Date().toISOString() })
+    .eq("id", 1);
+  if (error) { toast(error.message); return; }
+  settings = { daily_call_target: call, daily_signup_target: sign };
+  $("#tgCall").value = call; $("#tgSign").value = sign;
+  $("#tgSaved").textContent = "Saved ✓";
+  setTimeout(() => { if ($("#tgSaved")) $("#tgSaved").textContent = ""; }, 2000);
+  renderTargets();
+});
+
 // ---- targets, per caller, for the selected period ----
 async function renderTargets() {
   const now = new Date();
@@ -380,7 +413,7 @@ async function renderTargets() {
     if (c.outcome === "Signed up") signBy[c.caller_id] = (signBy[c.caller_id] || 0) + 1;
   });
 
-  const callTgt = DAILY_CALL_TARGET * mult, signTgt = DAILY_SIGNUP_TARGET * mult;
+  const callTgt = settings.daily_call_target * mult, signTgt = settings.daily_signup_target * mult;
   const callers = Object.values(profiles).filter(p => !p.is_admin);   // owners/admins aren't tracked
   const teamCalls = rows.filter(c => !(profiles[c.caller_id] && profiles[c.caller_id].is_admin)).length;
   $("#targetPill").textContent = `team ${teamCalls}/${callers.length * callTgt} calls ${label}`;
@@ -964,6 +997,16 @@ function subscribeRealtime() {
   sb.channel("messages-changes")
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
       appendMessage(payload.new);
+    })
+    .subscribe();
+
+  // live target changes — everyone's bars + the editor update instantly
+  sb.channel("settings-changes")
+    .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, async () => {
+      await loadSettings();
+      if ($("#tgCall")) $("#tgCall").value = settings.daily_call_target;
+      if ($("#tgSign")) $("#tgSign").value = settings.daily_signup_target;
+      if ($("#dash").classList.contains("show")) renderTargets();
     })
     .subscribe();
 }
