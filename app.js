@@ -80,6 +80,26 @@ $("#signout").addEventListener("click", async () => {
   location.reload();
 });
 
+// ---- change-your-own-password (no email needed) ----
+const pwModal = () => $("#pwModal");
+$("#changePw") && $("#changePw").addEventListener("click", () => {
+  $("#pwNew").value = ""; $("#pwNew2").value = ""; $("#pwMsg").textContent = "";
+  pwModal().classList.remove("hidden");
+  $("#pwNew").focus();
+});
+$("#pwClose") && $("#pwClose").addEventListener("click", () => pwModal().classList.add("hidden"));
+$("#pwModal") && $("#pwModal").addEventListener("click", (e) => { if (e.target.id === "pwModal") pwModal().classList.add("hidden"); });
+$("#pwSave") && $("#pwSave").addEventListener("click", async () => {
+  const a = $("#pwNew").value, b = $("#pwNew2").value, msg = $("#pwMsg");
+  if (a.length < 6) { msg.style.color = "#dc2626"; msg.textContent = "Password must be at least 6 characters."; return; }
+  if (a !== b)     { msg.style.color = "#dc2626"; msg.textContent = "Passwords don't match."; return; }
+  msg.style.color = "var(--muted)"; msg.textContent = "Saving…";
+  const { error } = await sb.auth.updateUser({ password: a });
+  if (error) { msg.style.color = "#dc2626"; msg.textContent = error.message; return; }
+  msg.style.color = "#16a34a"; msg.textContent = "Password updated ✓";
+  setTimeout(() => pwModal().classList.add("hidden"), 1200);
+});
+
 // ---------------- BOOT ----------------
 async function boot() {
   const { data: { session } } = await sb.auth.getSession();

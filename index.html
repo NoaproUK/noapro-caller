@@ -46,6 +46,7 @@
     <div class="side-foot">
       <p class="team">Users</p>
       <div id="teamList"></div>
+      <button class="signout" id="changePw" style="margin-bottom:6px">Change password</button>
       <button class="signout" id="signout">Sign out</button>
     </div>
   </aside>
@@ -231,8 +232,21 @@
   </div>
 </div>
 
+<div class="modal hidden" id="pwModal">
+  <div class="modal-box" style="max-width:380px">
+    <div class="modal-h"><span>Change your password</span><button class="modal-x" id="pwClose">✕</button></div>
+    <div class="modal-body">
+      <p style="margin:0 0 12px;color:var(--muted);font-size:13px">Set a new password for your account. Minimum 6 characters.</p>
+      <input type="password" id="pwNew" placeholder="New password" style="width:100%;box-sizing:border-box;padding:9px 11px;margin-bottom:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px">
+      <input type="password" id="pwNew2" placeholder="Confirm new password" style="width:100%;box-sizing:border-box;padding:9px 11px;margin-bottom:14px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px">
+      <button id="pwSave" style="width:100%;padding:10px;background:var(--brand);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer">Update password</button>
+      <p id="pwMsg" style="margin:10px 0 0;font-size:13px"></p>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
-<script type="module" src="app.js?v=22"></script>
+<script type="module" src="app.js?v=23"></script>
 </body>
 </html>
