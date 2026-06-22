@@ -163,8 +163,9 @@ const RENDER_CAP = 150;   // max lead rows drawn at once (keeps the page snappy)
 //   Leeds = "Construction Outreach" sheet, Kent = "LEADS" sheet.
 let region = "";  // "", "leeds", "kent"
 function regionClause(q) {
-  if (region === "leeds") return q.ilike("source_file", "%Construction Outreach%");
-  if (region === "kent")  return q.ilike("source_file", "%LEADS%");
+  // region column: 'leeds' | 'kent' | 'both' | null. "both" shows under either filter.
+  if (region === "leeds") return q.in("region", ["leeds", "both"]);
+  if (region === "kent")  return q.in("region", ["kent", "both"]);
   return q;
 }
 
@@ -944,6 +945,9 @@ async function importLeadFile(file) {
     if (data.length < 1000) break;
   }
 
+  // region chosen for this file (Leeds / Kent / Both / none)
+  const impRegion = ($("#importRegion")?.value || "") || null;
+
   // New leads go to the queue; anything that already exists is parked for review.
   const inserts = [], dupes = [];
   for (const l of leads) {
@@ -955,6 +959,7 @@ async function importLeadFile(file) {
       dupes.push({ business: l.business, phone: l.phone, email: l.email, category: l.category, area: l.area,
                    source_file: l.source_file, reason, matched_lead_id: phoneMatch || nameMatch, imported_by: me.id });
     } else {
+      l.region = impRegion;
       inserts.push(l);
     }
   }
