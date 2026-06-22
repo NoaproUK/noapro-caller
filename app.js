@@ -947,10 +947,10 @@ $("#nav").addEventListener("click", (e) => {
 async function loadAdmin() {
   const { data: profs } = await sb.from("profiles").select("*");
   (profs || []).forEach(p => { profiles[p.id] = p; });
-  const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
-  const { data: today } = await sb.from("call_log").select("caller_id,outcome").gte("created_at", startOfDay.toISOString());
+  // all-time totals per caller (calls + sign-ups to date)
+  const { data: stats } = await sb.from("caller_stats").select("caller_id,calls,signups");
   const callsBy = {}, signBy = {};
-  (today || []).forEach(c => { callsBy[c.caller_id] = (callsBy[c.caller_id] || 0) + 1; if (c.outcome === "Signed up") signBy[c.caller_id] = (signBy[c.caller_id] || 0) + 1; });
+  (stats || []).forEach(s => { callsBy[s.caller_id] = s.calls; signBy[s.caller_id] = s.signups; });
   $("#adminTeam").innerHTML = Object.values(profiles).map(p => {
     const on = online.has(p.id);
     const seen = p.last_seen ? new Date(p.last_seen).toLocaleString() : "never";
