@@ -169,8 +169,12 @@ function regionClause(q) {
   return q;
 }
 
-// Region is derived from the postcode: starts with "LS" = Leeds, everything else = Kent.
-function regionFor(area) { return (area || "").trim().toLowerCase().startsWith("ls") ? "leeds" : "kent"; }
+// Region from the postcode AREA: Yorkshire areas → Leeds; everything else
+// (London/South postcodes + Kent town names) → Kent.
+// Yorkshire & Humber areas: BD DN HD HG HU HX LS S WF YO.
+function regionFor(area) {
+  return /^(BD|DN|HD|HG|HU|HX|LS|S|WF|YO)\d/i.test((area || "").trim()) ? "leeds" : "kent";
+}
 
 // Apply the active filters (area, category, search, region) to a Supabase query —
 // runs server-side so filters reach ALL leads, not just the ones on screen.
