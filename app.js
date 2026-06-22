@@ -168,10 +168,10 @@ function regionClause(q) {
   return q;
 }
 
-// Apply the active filters (area, category, search) to a Supabase query — runs
-// server-side so filters reach ALL leads, not just the ones currently on screen.
+// Apply the active filters (area, category, search, region) to a Supabase query —
+// runs server-side so filters reach ALL leads, not just the ones on screen.
+// Status is applied by the caller so the queue can prioritise certain statuses.
 function queueFilter(q) {
-  q = q.in("status", [...CALLABLE, "Calling"]);
   q = regionClause(q);
   const area = (($("#fArea") || {}).value || "").trim();
   const cat  = (($("#fCat")  || {}).value || "").trim();
@@ -181,6 +181,10 @@ function queueFilter(q) {
   if (term) q = q.or(`business.ilike.%${term}%,phone.ilike.%${term}%`);
   return q;
 }
+
+// Callbacks + voicemails get chased first, so they sit at the very top of the queue.
+const QUEUE_PRIORITY = ["Callback", "Voicemail left"];
+const QUEUE_REGULAR  = ["New", "No answer", "Calling"];
 
 // Restore my in-progress call from the DB (e.g. after a refresh mid-call).
 async function loadActive() {
@@ -203,12 +207,29 @@ function leadRow(l) {
 }
 
 async function loadQueue() {
-  const { count } = await queueFilter(sb.from("leads").select("*", { count: "exact", head: true }));
-  const { data, error } = await queueFilter(sb.from("leads").select("*"))
+  const { count } = await queueFilter(sb.from("leads").select("*", { count: "exact", head: true }))
+    .in("status", [...CALLABLE, "Calling"]);
+
+  // 1) Priority: callbacks & voicemails to chase — soonest callback first, then most recently actioned.
+  const { data: prio, error: e1 } = await queueFilter(sb.from("leads").select("*"))
+    .in("status", QUEUE_PRIORITY)
     .order("callback_at", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: true })
+    .order("last_called_at", { ascending: false, nullsFirst: false })
     .limit(RENDER_CAP);
-  if (error) { toast(error.message); return; }
+  if (e1) { toast(e1.message); return; }
+
+  // 2) Everything else (new / no-answer / in-progress), oldest first.
+  let rest = [];
+  const need = RENDER_CAP - (prio ? prio.length : 0);
+  if (need > 0) {
+    const { data: r, error: e2 } = await queueFilter(sb.from("leads").select("*"))
+      .in("status", QUEUE_REGULAR)
+      .order("created_at", { ascending: true })
+      .limit(need);
+    if (e2) { toast(e2.message); return; }
+    rest = r || [];
+  }
+  const data = [...(prio || []), ...rest];
 
   const list = (data || []).filter(l => !(l.status === "Calling" && l.claimed_by === me.id));
   const total = count || 0;
