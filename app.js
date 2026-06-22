@@ -579,6 +579,53 @@ async function openCallsModal(signedOnly) {
 async function loadFiles()   { return loadFileList("",        "#fileList",   "No documents yet. Upload one to share with the team."); }
 async function loadImports() { return loadFileList("imports/", "#importList", "No imported files yet — upload a spreadsheet above."); }
 
+// ---- Duplicate leads (skipped on import, kept for review) ----
+async function loadDuplicates() {
+  if (!$("#dupBody")) return;
+  const { data, count, error } = await sb.from("duplicate_leads")
+    .select("*", { count: "exact" }).order("created_at", { ascending: false }).limit(300);
+  if (error) {
+    $("#dupBody").innerHTML = `<tr><td colspan="7" class="empty">Run <b>duplicate-leads.sql</b> in Supabase to switch this on, then reload.</td></tr>`;
+    if ($("#dupCount")) $("#dupCount").textContent = "";
+    return;
+  }
+  const rows = data || [];
+  if ($("#dupCount")) $("#dupCount").textContent = rows.length ? `${count} skipped` : "";
+  $("#dupBody").innerHTML = rows.length ? rows.map(d => `
+    <tr data-dup="${d.id}">
+      <td title="${esc(d.business)}">${esc(d.business)}</td>
+      <td>${esc(d.phone || "")}</td>
+      <td>${esc(d.area || "")}</td>
+      <td>${esc(d.reason || "")}</td>
+      <td title="${esc(d.source_file || "")}">${esc((d.source_file || "").slice(0, 38))}</td>
+      <td>${new Date(d.created_at).toLocaleDateString()}</td>
+      <td style="white-space:nowrap;text-align:right">
+        <button class="btn ghost dupAdd" data-id="${d.id}">Add as new</button>
+        <button class="btn ghost dupDismiss" data-id="${d.id}" style="color:var(--red);border-color:var(--red)">Dismiss</button>
+      </td>
+    </tr>`).join("") : `<tr><td colspan="7" class="empty">No duplicates — re-imports that already exist will appear here for review.</td></tr>`;
+  $$("#dupBody .dupAdd").forEach(b => b.addEventListener("click", () => addDuplicate(b.dataset.id)));
+  $$("#dupBody .dupDismiss").forEach(b => b.addEventListener("click", () => dismissDuplicate(b.dataset.id)));
+}
+
+async function addDuplicate(id) {
+  const { data } = await sb.from("duplicate_leads").select("*").eq("id", id).limit(1);
+  const d = data && data[0]; if (!d) return;
+  const { error } = await sb.from("leads").insert({
+    business: d.business, phone: d.phone, email: d.email,
+    category: d.category, area: d.area, status: "New", source_file: d.source_file
+  });
+  if (error) { toast(error.message); return; }
+  await sb.from("duplicate_leads").delete().eq("id", id);
+  toast("Added to the call queue."); loadDuplicates(); loadQueue();
+}
+
+async function dismissDuplicate(id) {
+  const { error } = await sb.from("duplicate_leads").delete().eq("id", id);
+  if (error) { toast(error.message); return; }
+  loadDuplicates();
+}
+
 async function loadFileList(prefix, containerId, emptyMsg) {
   const { data, error } = await sb.storage.from("files").list(prefix || "", { sortBy: { column: "created_at", order: "desc" } });
   if (error) { $(containerId).innerHTML = `<div class="empty">${esc(error.message)}</div>`; return; }
@@ -850,44 +897,62 @@ async function importLeadFile(file) {
     }
   } catch (err) { toast("Couldn't read file: " + err.message); return; }
 
-  // de-duplicate within this file (business + phone)
-  const seen = new Set();
-  leads = leads.filter(l => { const k = (l.business + "|" + (l.phone || "")).toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  const norm   = s => (s || "").trim().toLowerCase();
+  const digits = s => (s || "").replace(/\D/g, "");
+
+  // de-duplicate within this file (same business name OR same phone)
+  const seenName = new Set(), seenPhone = new Set();
+  leads = leads.filter(l => {
+    const nk = norm(l.business), pk = digits(l.phone);
+    if (seenName.has(nk) || (pk && seenPhone.has(pk))) return false;
+    seenName.add(nk); if (pk) seenPhone.add(pk);
+    return true;
+  });
   if (!leads.length) { toast('No leads found — the file needs a "business" column.'); return; }
 
-  // Match against existing leads by business name so re-imports UPDATE existing rows
-  // (e.g. fill in emails) instead of creating duplicates.
-  toast("Matching against existing leads…");
-  const existing = {};
+  // Build lookups of everything already in the list (by name and by phone)
+  toast("Checking for duplicates…");
+  const nameToId = new Map(), phoneToId = new Map();
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await sb.from("leads").select("id,business").range(from, from + 999);
+    const { data, error } = await sb.from("leads").select("id,business,phone").range(from, from + 999);
     if (error || !data || !data.length) break;
-    data.forEach(l => { const k = (l.business || "").trim().toLowerCase(); (existing[k] = existing[k] || []).push(l.id); });
+    data.forEach(l => {
+      const nk = norm(l.business); if (nk && !nameToId.has(nk)) nameToId.set(nk, l.id);
+      const pk = digits(l.phone);  if (pk && !phoneToId.has(pk)) phoneToId.set(pk, l.id);
+    });
     if (data.length < 1000) break;
   }
-  const byId = new Map(), inserts = [];   // Map keyed by id → one update per row (avoids ON CONFLICT dup-row error)
+
+  // New leads go to the queue; anything that already exists is parked for review.
+  const inserts = [], dupes = [];
   for (const l of leads) {
-    const ids = existing[l.business.trim().toLowerCase()];
-    if (ids && ids.length) { if (l.email) ids.forEach(id => byId.set(id, { id, business: l.business, email: l.email })); }
-    else inserts.push(l);
+    const nk = norm(l.business), pk = digits(l.phone);
+    const phoneMatch = pk ? phoneToId.get(pk) : null;
+    const nameMatch  = nameToId.get(nk);
+    if (phoneMatch || nameMatch) {
+      const reason = (phoneMatch && nameMatch) ? "Same name & phone" : phoneMatch ? "Same phone number" : "Same business name";
+      dupes.push({ business: l.business, phone: l.phone, email: l.email, category: l.category, area: l.area,
+                   source_file: l.source_file, reason, matched_lead_id: phoneMatch || nameMatch, imported_by: me.id });
+    } else {
+      inserts.push(l);
+    }
   }
-  const updates = [...byId.values()];
-  let nUp = 0;
-  for (let i = 0; i < updates.length; i += 300) {
-    const { error } = await sb.from("leads").upsert(updates.slice(i, i + 300), { onConflict: "id" });
-    if (error) { toast("Update error: " + error.message); break; }
-    nUp += Math.min(300, updates.length - i);
-    toast(`Updating emails… ${nUp}/${updates.length}`);
-  }
+
   let nIns = 0;
   for (let i = 0; i < inserts.length; i += 500) {
     const { error } = await sb.from("leads").insert(inserts.slice(i, i + 500));
     if (error) { toast("Insert error: " + error.message); break; }
     nIns += Math.min(500, inserts.length - i);
   }
-  toast(`Import done — ${nUp} updated, ${nIns} new.`);
+  let nDup = 0;
+  for (let i = 0; i < dupes.length; i += 500) {
+    const { error } = await sb.from("duplicate_leads").insert(dupes.slice(i, i + 500));
+    if (error) { toast("Couldn't log duplicates (run duplicate-leads.sql): " + error.message); break; }
+    nDup += Math.min(500, dupes.length - i);
+  }
+  toast(`Import done — ${nIns} new added, ${nDup} duplicate${nDup === 1 ? "" : "s"} skipped${nDup ? " (see Duplicate leads)" : ""}.`);
   try { await sb.storage.from("files").upload("imports/" + file.name, file, { upsert: true }); } catch (_) {}
-  loadQueue(); loadImports();
+  loadQueue(); loadImports(); loadDuplicates();
 }
 
 $("#csvInput").addEventListener("change", async (e) => {
@@ -895,6 +960,14 @@ $("#csvInput").addEventListener("change", async (e) => {
   toast("Reading " + file.name + "…");
   await importLeadFile(file);
   e.target.value = "";
+});
+
+// Duplicate leads: clear the whole review list
+$("#dupClear") && $("#dupClear").addEventListener("click", async () => {
+  if (!confirm("Dismiss ALL duplicate leads from the review list? Your real leads are untouched.")) return;
+  const { error } = await sb.from("duplicate_leads").delete().neq("id", 0);
+  if (error) { toast(error.message); return; }
+  toast("Duplicate review list cleared."); loadDuplicates();
 });
 
 // minimal CSV parser (handles quoted fields & commas)
@@ -1010,7 +1083,7 @@ $("#nav").addEventListener("click", (e) => {
   $("#" + b.dataset.p).classList.add("show");
   if (b.dataset.p === "dash") loadDashboard();
   if (b.dataset.p === "files") loadFiles();
-  if (b.dataset.p === "imports") loadImports();
+  if (b.dataset.p === "imports") { loadImports(); loadDuplicates(); }
   if (b.dataset.p === "all") loadAllLeads();
   if (b.dataset.p === "connected") loadConnected();
   if (b.dataset.p === "chat") loadMessages();
