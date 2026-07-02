@@ -509,6 +509,121 @@ function exportXlsx({ filename, sheet, subtitle, columns, rows }) {
   XLSXStyle.writeFile(wb, filename);
 }
 
+// ---------------- CALL NOTES REPORT (fancy, multi-sheet) ----------------
+const regLabel = (r) => ({ leeds: "Leeds", kent: "Kent", both: "Both" }[r] || "");
+function outcomeStyle(o) {
+  const map = {
+    "Signed up":      ["FF166534", "FFDCFCE7"],
+    "Callback":       ["FF92400E", "FFFEF3C7"],
+    "Voicemail left": ["FF1E40AF", "FFDBEAFE"],
+    "No answer":      ["FF374151", "FFF3F4F6"],
+    "Not interested": ["FF991B1B", "FFFEE2E2"],
+    "Wrong number":   ["FF991B1B", "FFFEE2E2"],
+    "Do not call":    ["FF991B1B", "FFFEE2E2"],
+  };
+  const [color, bg] = map[o] || ["FF1F2937", "FFFFFFFF"];
+  return { color, bg };
+}
+// Build a branded worksheet; groupKey shades alternating stakeholder blocks,
+// outcomeKey colours the outcome cell, wrap columns get wrapped text + filter.
+function buildNotesSheet(U, { subtitle, columns, rows, groupKey, outcomeKey, bodyRowH }) {
+  const ncol = columns.length;
+  const aoa = [["NoaPro"], [subtitle], [`Generated ${new Date().toLocaleString("en-GB")}  •  noapro.co.uk`], [], columns.map(c => c.label)];
+  rows.forEach(r => aoa.push(columns.map(c => (r[c.key] == null ? "" : r[c.key]))));
+  const ws = U.aoa_to_sheet(aoa);
+  ws["!merges"] = [0, 1, 2].map(r => ({ s: { r, c: 0 }, e: { r, c: ncol - 1 } }));
+  ws["!cols"] = columns.map(c => ({ wch: c.width || 16 }));
+  ws["!autofilter"] = { ref: `${U.encode_cell({ r: 4, c: 0 })}:${U.encode_cell({ r: 4 + rows.length, c: ncol - 1 })}` };
+  const heights = [{ hpt: 32 }, { hpt: 20 }, { hpt: 16 }, { hpt: 6 }, { hpt: 24 }];
+  const cell = (r, c) => { const ref = U.encode_cell({ r, c }); return (ws[ref] = ws[ref] || { t: "s", v: "" }); };
+  cell(0, 0).s = { font: { bold: true, sz: 20, color: { rgb: "FFFFFFFF" } }, fill: { fgColor: { rgb: X_BRAND } }, alignment: { vertical: "center", horizontal: "left", indent: 1 } };
+  cell(1, 0).s = { font: { bold: true, sz: 12, color: { rgb: "FFFFFFFF" } }, fill: { fgColor: { rgb: X_BRANDDK } }, alignment: { vertical: "center", horizontal: "left", indent: 1 } };
+  cell(2, 0).s = { font: { sz: 10, color: { rgb: "FF6B7280" } }, alignment: { horizontal: "left", indent: 1 } };
+  for (let c = 0; c < ncol; c++)
+    cell(4, c).s = { font: { bold: true, sz: 11, color: { rgb: "FFFFFFFF" } }, fill: { fgColor: { rgb: X_BRAND } }, alignment: { horizontal: "left", vertical: "center", wrapText: true }, border: xThin() };
+  let groupIdx = 0, prevGroup = null;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i], rowN = 5 + i;
+    if (groupKey) { const g = r[groupKey]; if (g !== prevGroup) { groupIdx++; prevGroup = g; } }
+    const shade = groupKey ? (groupIdx % 2 ? X_ZEBRA : "FFFFFFFF") : (i % 2 ? X_ZEBRA : "FFFFFFFF");
+    for (let c = 0; c < ncol; c++) {
+      const col = columns[c];
+      let fillRgb = shade, fontColor = "FF1F2937", bold = false;
+      if (outcomeKey && col.key === outcomeKey) { const oc = outcomeStyle(r[outcomeKey]); fillRgb = oc.bg; fontColor = oc.color; bold = true; }
+      cell(rowN, c).s = { font: { sz: 10, color: { rgb: fontColor }, bold }, alignment: { horizontal: "left", vertical: "top", wrapText: !!col.wrap }, border: xThin(), fill: { fgColor: { rgb: fillRgb } } };
+    }
+    heights.push({ hpt: bodyRowH || 16 });
+  }
+  ws["!rows"] = heights;
+  return ws;
+}
+
+async function exportNotesReport() {
+  toast("Building notes report…");
+  let logs = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await sb.from("call_log")
+      .select("created_at,outcome,note,caller_id,lead_id,leads(business,phone,email,area,region,category,status)")
+      .order("created_at", { ascending: true }).range(from, from + 999);
+    if (error) { toast(error.message); return; }
+    if (!data || !data.length) break;
+    logs = logs.concat(data);
+    if (data.length < 1000) break;
+  }
+  if (!logs.length) { toast("No calls logged yet — nothing to report."); return; }
+
+  // sheet 1: every call, grouped by stakeholder
+  logs.sort((a, b) => (a.leads?.business || "").localeCompare(b.leads?.business || "") || new Date(a.created_at) - new Date(b.created_at));
+  const detail = logs.map(l => ({
+    business: l.leads?.business || "", area: l.leads?.area || "", region: regLabel(l.leads?.region),
+    phone: l.leads?.phone || "", email: l.leads?.email || "", category: l.leads?.category || "",
+    status: l.leads?.status || "", caller: profiles[l.caller_id]?.full_name || "",
+    when: new Date(l.created_at).toLocaleString("en-GB"), outcome: l.outcome, note: l.note || "",
+  }));
+
+  // sheet 2: one row per stakeholder with all their notes combined
+  const byLead = new Map();
+  logs.forEach(l => { if (!byLead.has(l.lead_id)) byLead.set(l.lead_id, []); byLead.get(l.lead_id).push(l); });
+  const summary = [...byLead.values()].map(arr => {
+    arr.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    const last = arr[arr.length - 1], L = last.leads || {};
+    const notes = arr.filter(x => x.note && x.note.trim())
+      .map(x => `${new Date(x.created_at).toLocaleDateString("en-GB")} · ${profiles[x.caller_id]?.full_name || ""} (${x.outcome}): ${x.note.trim()}`).join("\n");
+    return {
+      business: L.business || "", area: L.area || "", region: regLabel(L.region), phone: L.phone || "", email: L.email || "",
+      attempts: arr.length, status: L.status || "", lastOutcome: last.outcome, lastCaller: profiles[last.caller_id]?.full_name || "",
+      lastContact: new Date(last.created_at).toLocaleString("en-GB"), notes,
+    };
+  }).sort((a, b) => a.business.localeCompare(b.business));
+
+  const U = XLSXStyle.utils, wb = U.book_new();
+  U.book_append_sheet(wb, buildNotesSheet(U, {
+    subtitle: "Call Notes by Stakeholder", groupKey: "business", outcomeKey: "outcome", bodyRowH: 30,
+    columns: [
+      { key: "business", label: "Business", width: 30 }, { key: "area", label: "Area", width: 12 },
+      { key: "region", label: "Region", width: 9 }, { key: "phone", label: "Phone", width: 15 },
+      { key: "email", label: "Email", width: 26 }, { key: "category", label: "Category", width: 16 },
+      { key: "status", label: "Current status", width: 14 }, { key: "caller", label: "Caller", width: 16 },
+      { key: "when", label: "When", width: 18 }, { key: "outcome", label: "Outcome", width: 16 },
+      { key: "note", label: "Note", width: 52, wrap: true },
+    ], rows: detail,
+  }), "Call Notes");
+  U.book_append_sheet(wb, buildNotesSheet(U, {
+    subtitle: "Stakeholder Summary", outcomeKey: "lastOutcome", bodyRowH: 46,
+    columns: [
+      { key: "business", label: "Business", width: 30 }, { key: "area", label: "Area", width: 12 },
+      { key: "region", label: "Region", width: 9 }, { key: "phone", label: "Phone", width: 15 },
+      { key: "email", label: "Email", width: 26 }, { key: "attempts", label: "Attempts", width: 9 },
+      { key: "status", label: "Current status", width: 14 }, { key: "lastOutcome", label: "Last outcome", width: 16 },
+      { key: "lastCaller", label: "Last caller", width: 16 }, { key: "lastContact", label: "Last contact", width: 18 },
+      { key: "notes", label: "All notes", width: 62, wrap: true },
+    ], rows: summary,
+  }), "Summary");
+  XLSXStyle.writeFile(wb, `noapro-call-notes-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  toast(`Notes report ready — ${detail.length} calls across ${summary.length} stakeholders.`);
+}
+$("#exportNotesBtn") && $("#exportNotesBtn").addEventListener("click", exportNotesReport);
+
 // ---------------- EXPORT RESULTS ----------------
 $("#exportBtn").addEventListener("click", async () => {
   const { data, error } = await sb.from("leads")
